@@ -26,6 +26,8 @@ class Fixers extends \WP_CLI_Command {
 	/**
 	 * Tries to fix internal links.
 	 *
+	 * Defaults to a dry-run mode.
+	 *
 	 * ## OPTIONS
 	 *
 	 * --old_domain
@@ -34,8 +36,11 @@ class Fixers extends \WP_CLI_Command {
 	 * [--meta_key]
 	 * : Post meta key name to check URLs against. Defaults to "_original_url".
 	 *
+	 * [--enact]
+	 * : Set this flag to actually make the replacements.
+	 *
 	 * @alias internal-links
-	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>]
+	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>] [--enact]
    *
    * @param array $args Positional args.
    * @param array $args Assocative args.
@@ -43,11 +48,13 @@ class Fixers extends \WP_CLI_Command {
 	public function internal_links( $args, $assoc_args ) {
 		// Default args.
 		$assoc_args = array_merge( array(
+			'enact'      => false,
 			'meta_key'   => '_original_url',
 			'old_domain' => '',
 		), $assoc_args );
 
 		// Prepare args.
+		$dry_run    = ! (bool) $assoc_args['enact'];
 		$old_domain = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
 		$limit      = 50;
 		$post_args  = array(
@@ -56,6 +63,16 @@ class Fixers extends \WP_CLI_Command {
 			's'                => $old_domain,  // Try to limit the search range.
 			'suppress_filters' => false,
 		);
+
+
+		if ( ! current_user_can( 'import' ) ) {
+			\WP_CLI::error( "You must run this command with a --user specified (site admin or network admin)." );
+			exit;
+		}
+
+		if ( $dry_run ) {
+			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
+		}
 
 		\WP_CLI::log( 'Finding URLs with the follow domain: ' . $old_domain );
 
@@ -95,7 +112,6 @@ class Fixers extends \WP_CLI_Command {
 						continue;
 					}
 
-					// Replace the URL and update post.
 					$text = str_replace(
 						'href='  . $link[1] . $link['href'] . $link[1],  // $link[1] is the quote marks found earlier.
 						'href="' . esc_url_raw( $new_link ) . '"',
@@ -103,15 +119,33 @@ class Fixers extends \WP_CLI_Command {
 					);
 					\WP_CLI::log( sprintf( '[#%d] Found [%s] replacing with [%s]', $post->ID, $link['href'], $new_link ) );
 
-					/*$result = wp_update_post( array(
-						'ID'           => $post->ID,
-						'post_content' => $text,
-					), true );*/
+
+					// Replace the URL and update post.
+					if ( ! $dry_run ) {
+						$result = wp_update_post( array(
+							'ID'           => $post->ID,
+							'post_content' => $text,
+						), true );
+
+						if ( is_wp_error( $result ) ) {
+							\WP_CLI::log( sprintf(
+								'[#%d] Failed replacing [%s] replacing with [%s]: %s',
+								$post->ID,
+								$link['href'],
+								$new_link,
+								$result->get_error_message()
+							) );
+						}
+					} else {
+						\WP_CLI::log( 'Dry-run mode enabled; post not updated.' );
+					}
 				}
 			}
 
 			$post_args['offset'] += $limit;  // Keep the loop loopin'.
 		}
+
+		\WP_CLI::log( 'Complete.' );
 	}
 
 	/**

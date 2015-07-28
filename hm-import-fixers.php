@@ -1,5 +1,12 @@
 <?php
-namespace HM\Fixers;
+namespace {
+	// Fake for unit tests.
+	if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+		class WP_CLI_Command {}
+	}
+}
+
+namespace HM\Import {
 /**
  * Plugin Name: Import Fixers
  * Description: Collection of WP-CLI commands to fix up strange-looking imports.
@@ -11,11 +18,6 @@ namespace HM\Fixers;
 
 // Exit if accessed directly
 defined( 'ABSPATH' ) || exit;
-
-// Plugin requires WP_CLI.
-if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
-	return;
-}
 
 
 /**
@@ -90,7 +92,7 @@ class Fixers extends \WP_CLI_Command {
 				}
 
 				// Extract all links from the $text.
-				preg_match_all( '/href=([\'"])(?P<href>(?!\1).+)\1/i', $text, $links, PREG_SET_ORDER );
+				preg_match_all( self::get_link_detection_regex(), $text, $links, PREG_SET_ORDER );
 				if ( ! $links ) {
 					continue;
 				}
@@ -148,6 +150,20 @@ class Fixers extends \WP_CLI_Command {
 		\WP_CLI::log( 'Complete.' );
 	}
 
+
+/**
+ * Helper/internal functions.
+ */
+
+	/**
+	 * Returns the regex used to detect HTML links.
+	 *
+	 * @return string
+	 */
+	static function get_link_detection_regex() {
+		return '/href=([\'"])(?P<href>(?!\1).+)\1/i';
+	}
+
 	/**
 	 * Given a post's previous URL, try to find the post's current URL from post meta. 
 	 *
@@ -155,7 +171,7 @@ class Fixers extends \WP_CLI_Command {
 	 * @param string $meta_key Post meta key name to check URLs against.
 	 * @return string If no post found, returns an empty string, otherwise returns an absolute URL.
 	 */
-	public static function find_current_post_url( $old_url, $meta_key ) {
+	static function find_current_post_url( $old_url, $meta_key ) {
 		$post_id = get_posts( array(
 			'fields'           => 'ids',
 			'meta_key'         => sanitize_key( $meta_key ),
@@ -174,4 +190,7 @@ class Fixers extends \WP_CLI_Command {
 	}
 }
 
-\WP_CLI::add_command( 'fix', __NAMESPACE__ . '\\Fixers' );
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+	\WP_CLI::add_command( 'fix', __NAMESPACE__ . '\\Fixers' );
+}
+}  // Namespace HM\Import

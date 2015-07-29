@@ -12,11 +12,11 @@ SYNOPSIS
   wp fix <command>
 
 SUBCOMMANDS
-  internal_links      Tries to fix internal links.
+  internal-links      Tries to fix internal links.
 ```
 
 
-## internal_links
+## internal-links
 ````
 NAME
   wp fix internal_links

@@ -4,7 +4,7 @@ namespace HM\Tests;
 /**
  * @group internal-links
  */
-class Test_Fix_Internal_Links extends TestCase {
+class Test_Fix_Internal_Links extends \WP_UnitTestCase {
 	public $old_user_id = 0;
 	public $user_id     = 0;
 	public $factory;

@@ -26,7 +26,7 @@ defined( 'ABSPATH' ) || exit;
 class Fixers extends \WP_CLI_Command {
 
 	/**
-	 * Tries to fix internal links.
+	 * Fixes internal links by finding URLs on `old_domain` and getting the current link to that post by looking in post_meta for a specific `meta_key` match.
 	 *
 	 * Defaults to a dry-run mode.
 	 *

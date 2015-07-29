@@ -22,7 +22,7 @@ NAME
   wp fix internal_links
 
 DESCRIPTION
-  Tries to fix internal links.
+  Fixes internal links by finding URLs on `old_domain` and getting the current link to that post by looking in post_meta for a specific `meta_key` match.
 
 SYNOPSIS
   wp fix internal_links --old_domain=<domain> [--meta_key=<_original_url>] [--enact]

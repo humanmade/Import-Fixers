@@ -47,7 +47,7 @@ class Test_Fix_Internal_Links extends \WP_UnitTestCase {
 	public function test_link_detection_regex() {
 		$regex = \HM\Import\Fixers::get_link_detection_regex();
 
-		// Good.
+		// Clean links.
 		preg_match_all( $regex, '<a href="https://buddypress.org/download">BuddyPress</a>', $results, PREG_SET_ORDER );
 		$this->assertNotEmpty( $results );
 		$this->assertSame( $results[0][0], 'href="https://buddypress.org/download"' );
@@ -61,7 +61,7 @@ class Test_Fix_Internal_Links extends \WP_UnitTestCase {
 		$this->assertSame( $results[0]['href'], 'https://bbpress.org/download' );
 
 
-		// Bad.
+		// Messy links.
 		preg_match_all( $regex, "<a href='https://wordpress.org/download'>'WordPress</a>", $results, PREG_SET_ORDER );
 		$this->assertNotEmpty( $results );
 		$this->assertSame( $results[0][0], "href='https://wordpress.org/download'" );

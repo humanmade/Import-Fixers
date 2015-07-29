@@ -151,9 +151,9 @@ class Fixers extends \WP_CLI_Command {
 	}
 
 
-/**
- * Helper/internal functions.
- */
+	/**
+	 * Helper/internal functions.
+	 */
 
 	/**
 	 * Returns the regex used to detect HTML links.

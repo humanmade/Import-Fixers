@@ -19,7 +19,7 @@ SUBCOMMANDS
 ## internal-links
 ````
 NAME
-  wp fix internal_links
+  wp fix internal-links
 
 DESCRIPTION
   Fixes internal links by finding URLs on `old_domain` and getting the current link to that post by looking in post_meta for a specific `meta_key` match.

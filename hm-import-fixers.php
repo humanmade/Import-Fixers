@@ -9,7 +9,7 @@ namespace {
 namespace HM\Import {
 /**
  * Plugin Name: Import Fixers
- * Description: Collection of WP-CLI commands to fix up strange-looking imports.
+ * Description: Collection of WP-CLI commands to help fix up imports.
  * Author: DJPaul, humanmade
  * Author URI: http://hmn.md
  * License: GPLv2 or later

@@ -161,7 +161,7 @@ class Fixers extends \WP_CLI_Command {
 	 * @return string
 	 */
 	static function get_link_detection_regex() {
-		return '/href=([\'"])(?P<href>(?!\1).+)\1/i';
+		return '/href=([\'"])(?P<href>(?!\1).+?)\1/i';
 	}
 
 	/**

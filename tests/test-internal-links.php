@@ -9,13 +9,6 @@ class Test_Fix_Internal_Links extends \WP_UnitTestCase {
 	public $user_id     = 0;
 	public $factory;
 
-	static function setUpBeforeClass() {
-		update_option( 'permalink_structure', '/%postname%/' );  // For test_find_current_post_url()
-	}
-
-	static function tearDownAfterClass() {
-		delete_option( 'permalink_structure' );
-	}
 
 	public function setUp() {
 		parent::setUp();
@@ -42,9 +35,13 @@ class Test_Fix_Internal_Links extends \WP_UnitTestCase {
 		$post_id   = $this->factory->post->create( array( 'post_name' => $post_name ) );
 		add_post_meta( $post_id, $meta_key, $old_url );
 
+		update_option( 'permalink_structure', '/%postname%/' );
+
 		// Test that we find the post's new URL from its old URL.
 		$permalink = \HM\Import\Fixers::find_current_post_url( $old_url, $meta_key );
 		$this->assertSame( $permalink, home_url( $post_name ) );
+
+		delete_option( 'permalink_structure' );
 	}
 
 	public function test_link_detection_regex() {

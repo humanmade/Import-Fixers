@@ -56,10 +56,10 @@ class Fixers extends \WP_CLI_Command {
 		), $assoc_args );
 
 		// Prepare args.
-		$dry_run    = ! (bool) $assoc_args['enact'];
-		$old_domain = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
-		$limit      = 50;
-		$post_args  = array(
+		$make_changes = (bool) $assoc_args['enact'];
+		$old_domain   = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
+		$limit        = 50;
+		$post_args    = array(
 			'offset'           => 0,
 			'posts_per_page'   => $limit,
 			's'                => $old_domain,  // Try to limit the search range.
@@ -72,7 +72,7 @@ class Fixers extends \WP_CLI_Command {
 			exit;
 		}
 
-		if ( $dry_run ) {
+		if ( ! $make_changes ) {
 			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
 		}
 
@@ -127,7 +127,7 @@ class Fixers extends \WP_CLI_Command {
 
 
 					// Replace the URL and update post.
-					if ( ! $dry_run ) {
+					if ( $make_changes ) {
 						$result = wp_update_post( array(
 							'ID'           => $post->ID,
 							'post_content' => $text,

@@ -76,7 +76,7 @@ class Fixers extends \WP_CLI_Command {
 			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
 		}
 
-		\WP_CLI::log( 'Finding URLs with the follow domain: ' . $old_domain );
+		\WP_CLI::log( "Finding URLs with the follow domain: {$old_domain}" );
 
 
 		/**
@@ -85,7 +85,7 @@ class Fixers extends \WP_CLI_Command {
 		 * Keep calling get_posts() until we run out of posts to check.
 		 */
 		while ( ( $posts = get_posts( $post_args ) ) !== array() ) {
-			\WP_CLI::log( 'Searching posts...' );
+			\WP_CLI::log( "\nSearching posts..." );
 
 			foreach ( $posts as $post ) {
 				$text = $post->post_content;
@@ -114,7 +114,7 @@ class Fixers extends \WP_CLI_Command {
 					// Find the current URL for this post.
 					$new_link = self::find_current_post_url( $link['href'], $assoc_args['meta_key'] );
 					if ( ! $new_link ) {
-						\WP_CLI::log( sprintf( '[#%d] Could not find current URL for: %s', $post->ID, $link['href'] ) );
+						\WP_CLI::log( sprintf( '[#%d] Could not find current post URL for: %s', $post->ID, $link['href'] ) );
 						continue;
 					}
 
@@ -135,15 +135,18 @@ class Fixers extends \WP_CLI_Command {
 
 						if ( is_wp_error( $result ) ) {
 							\WP_CLI::log( sprintf(
-								'[#%d] Failed replacing [%s] replacing with [%s]: %s',
+								"\t[#%d] Failed replacing [%s] replacing with [%s]: %s",
 								$post->ID,
 								$link['href'],
 								$new_link,
 								$result->get_error_message()
 							) );
+						} else {
+							\WP_CLI::log( "\tPost updated." );
 						}
+
 					} else {
-						\WP_CLI::log( 'Dry-run mode enabled; post not updated.' );
+						\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
 					}
 				}
 			}
@@ -151,7 +154,7 @@ class Fixers extends \WP_CLI_Command {
 			$post_args['offset'] += $limit;  // Keep the loop loopin'.
 		}
 
-		\WP_CLI::log( 'Complete.' );
+		\WP_CLI::log( "\nComplete." );
 	}
 
 

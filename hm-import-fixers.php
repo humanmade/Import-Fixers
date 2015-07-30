@@ -1,7 +1,7 @@
 <?php
 namespace {
 	// Fake for unit tests.
-	if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+	if ( ! class_exists( 'WP_CLI_Command' ) ) {
 		class WP_CLI_Command {}
 	}
 }

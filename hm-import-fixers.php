@@ -79,7 +79,11 @@ class Fixers extends \WP_CLI_Command {
 		\WP_CLI::log( 'Finding URLs with the follow domain: ' . $old_domain );
 
 
-		// Fetch batches of posts.
+		/**
+		 * Fetch batches of posts.
+		 *
+		 * Keep calling get_posts() until we run out of posts to check.
+		 */
 		while ( ( $posts = get_posts( $post_args ) ) !== array() ) {
 			\WP_CLI::log( 'Searching posts...' );
 

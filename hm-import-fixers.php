@@ -43,9 +43,9 @@ class Fixers extends \WP_CLI_Command {
 	 *
 	 * @alias internal-links
 	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>] [--enact]
-   *
-   * @param array $args Positional args.
-   * @param array $args Assocative args.
+	 *
+	 * @param array $args Positional args.
+	 * @param array $args Assocative args.
 	 */
 	public function internal_links( $args, $assoc_args ) {
 		// Default args.

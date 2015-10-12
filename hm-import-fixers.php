@@ -220,47 +220,18 @@ class Fixers extends \WP_CLI_Command {
 					continue;
 				}
 
-				$dom   = new \DOMDocument();
-				$dom->loadHTML( '<div>' . $text . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
-				$xpath = new \DOMXPath( $dom );
-
-
-				// Find links with any href value (that wrap images with a blank src).
-				foreach ( $xpath->query( '//a[@href]/img[@src=""]/..' ) as $anchor_element ) {
-					$image_url = $anchor_element->getAttribute( 'href' );
-					$mime_type = wp_check_filetype( $image_url )['type'];
-
-					if ( $mime_type && strpos( $mime_type, 'image/' ) === false ) {
-						continue;
-					}
-
-					// Find images wrapped by that anchor, and set the src.
-					foreach ( $xpath->query( './img[@src=""]', $anchor_element ) as $img_element ) {
-						$img_element->setAttribute( 'src', $image_url );
-
-						\WP_CLI::log( sprintf( '[#%d] Found empty link, replacing with [%s]', $post->ID, $image_url ) );
-					}
+				$new_text = self::replace_img_src_links_in_text( $text );
+				if ( $new_text === $text ) {
+					continue;
 				}
 
-
-				// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
-				$container = $dom->getElementsByTagName( 'div' )->item( 0 );
-				$container = $container->parentNode->removeChild( $container );
-
-				while ( $dom->firstChild ) {
-					$dom->removeChild( $dom->firstChild );
-				}
-
-				while ( $container->firstChild ) {
-					$dom->appendChild( $container->firstChild );
-				}
-
+				\WP_CLI::log( sprintf( '[#%d] Found empty <img src>, fixing it.', $post->ID ) );
 
 				// Update post.
 				if ( $make_changes ) {
 					$result = wp_update_post( array(
 						'ID'           => $post->ID,
-						'post_content' => $dom->saveHTML(),
+						'post_content' => $new_text,
 					), true );
 
 					if ( is_wp_error( $result ) ) {
@@ -277,7 +248,6 @@ class Fixers extends \WP_CLI_Command {
 					\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
 				}
 
-				unset( $container, $xpath, $dom );
 				$post_args['offset'] += $limit;  // Keep the loop loopin'.
 			}
 		}
@@ -296,7 +266,7 @@ class Fixers extends \WP_CLI_Command {
 	 *
 	 * @return string
 	 */
-	static function get_link_detection_regex() {
+	static public function get_link_detection_regex() {
 		return '/href=([\'"])(?P<href>(?!\1).+?)\1/i';
 	}
 
@@ -307,7 +277,7 @@ class Fixers extends \WP_CLI_Command {
 	 * @param string $meta_key Post meta key name to check URLs against.
 	 * @return string If no post found, returns an empty string, otherwise returns an absolute URL.
 	 */
-	static function find_current_post_url( $old_url, $meta_key ) {
+	static public function find_current_post_url( $old_url, $meta_key ) {
 		$post_id = get_posts( array(
 			'fields'           => 'ids',
 			'meta_key'         => sanitize_key( $meta_key ),
@@ -323,6 +293,50 @@ class Fixers extends \WP_CLI_Command {
 		}
 
 		return get_permalink( $post_id );
+	}
+
+	/**
+	 * Given a block of text, look for img tags nested in anchors that have no src attribute set.
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	static public function replace_img_src_links_in_text( $text ) {
+		$dom   = new \DOMDocument();
+		$dom->loadHTML( '<div>' . $text . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
+		$xpath = new \DOMXPath( $dom );
+
+
+		// Find links with any href value (that wrap images with a blank src).
+		foreach ( $xpath->query( '//a[@href]/img[@src=""]/..' ) as $anchor_element ) {
+			$image_url = $anchor_element->getAttribute( 'href' );
+			$mime_type = wp_check_filetype( $image_url )['type'];
+
+			if ( $mime_type && strpos( $mime_type, 'image/' ) === false ) {
+				continue;
+			}
+
+			// Find images wrapped by that anchor, and set the src.
+			foreach ( $xpath->query( './img[@src=""]', $anchor_element ) as $img_element ) {
+				$img_element->setAttribute( 'src', $image_url );
+			}
+		}
+
+
+		// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
+		$container = $dom->getElementsByTagName( 'div' )->item( 0 );
+		$container = $container->parentNode->removeChild( $container );
+
+		while ( $dom->firstChild ) {
+			$dom->removeChild( $dom->firstChild );
+		}
+
+		while ( $container->firstChild ) {
+			$dom->appendChild( $container->firstChild );
+		}
+
+
+		return trim( $dom->saveHTML() );
 	}
 }
 

@@ -14,7 +14,7 @@ namespace HM\Import {
  * Author URI: http://hmn.md
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Version: 1
+ * Version: 2
  */
 
 // Exit if accessed directly
@@ -156,6 +156,134 @@ class Fixers extends \WP_CLI_Command {
 		}
 
 		\WP_CLI::log( "\nComplete." );
+	}
+
+	/**
+	 * Repairs empty `<img src="">` attributes which are wrapped in a link to an image.
+	 *
+	 * Defaults to a dry-run mode.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--enact]
+	 * : Set this flag to actually make the replacements.
+	 *
+	 * @alias img-src-from-links
+	 * @synopsis [--enact]
+	 *
+	 * @param array $args Positional args.
+	 * @param array $args Assocative args.
+	 */
+	public function img_src_from_links( $args, $assoc_args ) {
+		// Default args.
+		$assoc_args = array_merge( array(
+			'enact' => false,
+		), $assoc_args );
+
+		// Prepare args.
+		$make_changes = (bool) $assoc_args['enact'];
+		$limit        = 50;
+		$post_args    = array(
+			'offset'           => 0,
+			'posts_per_page'   => $limit,
+			's'                => 'src=""',  // Try to limit the search range.
+			'suppress_filters' => false,
+		);
+
+
+		if ( ! current_user_can( 'import' ) ) {
+			\WP_CLI::error( "You must run this command with a --user specified (site admin or network admin)." );
+			exit;
+		}
+
+		if ( ! $make_changes ) {
+			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
+		}
+
+		\WP_CLI::log( 'Finding posts with empty <img src=""> attributes.' );
+		libxml_use_internal_errors( true );
+
+
+		/**
+		 * Fetch batches of posts.
+		 *
+		 * Keep calling get_posts() until we run out of posts to check.
+		 */
+		while ( ( $posts = get_posts( $post_args ) ) !== array() ) {
+			\WP_CLI::log( sprintf( "\nSearching %d posts...", $posts ) );
+
+			foreach ( $posts as $post ) {
+				$text = $post->post_content;
+
+				// Sanity check: if the content doesn't contain `src=""`, don't bother doing anything else.
+				if ( strpos( $text, 'src=""' ) === false && strpos( $text, "src=''" ) === false ) {
+					continue;
+				}
+
+				$dom   = new \DOMDocument();
+				$dom->loadHTML( '<div>' . $text . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
+				$xpath = new \DOMXPath( $dom );
+
+
+				// Find links with any href value (that wrap images with a blank src).
+				foreach ( $xpath->query( '//a[@href]/img[@src=""]/..' ) as $anchor_element ) {
+					$image_url = $anchor_element->getAttribute( 'href' );
+					$mime_type = wp_check_filetype( $image_url )['type'];
+
+					if ( $mime_type && strpos( $mime_type, 'image/' ) === false ) {
+						continue;
+					}
+
+					// Find images wrapped by that anchor, and set the src.
+					foreach ( $xpath->query( './img[@src=""]', $anchor_element ) as $img_element ) {
+						$img_element->setAttribute( 'src', $image_url );
+
+						\WP_CLI::log( sprintf( '[#%d] Found empty link, replacing with [%s]', $post->ID, $image_url ) );
+					}
+				}
+
+
+				// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
+				$container = $dom->getElementsByTagName( 'div' )->item( 0 );
+				$container = $container->parentNode->removeChild( $container );
+
+				while ( $dom->firstChild ) {
+					$dom->removeChild( $dom->firstChild );
+				}
+
+				while ( $container->firstChild ) {
+					$dom->appendChild( $container->firstChild );
+				}
+
+
+				// Update post.
+				if ( $make_changes ) {
+					$result = wp_update_post( array(
+						'ID'           => $post->ID,
+						'post_content' => $dom->saveHTML(),
+					), true );
+
+					if ( is_wp_error( $result ) ) {
+						\WP_CLI::log( sprintf(
+							"\t[#%d] Failed replacing empty links: %s",
+							$post->ID,
+							$result->get_error_message()
+						) );
+					} else {
+						\WP_CLI::log( "\tPost updated." );
+					}
+
+				} else {
+					\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
+				}
+
+				unset( $container, $xpath, $dom );
+				$post_args['offset'] += $limit;  // Keep the loop loopin'.
+			}
+		}
+
+		libxml_clear_errors();
+		libxml_use_internal_errors( false );
 	}
 
 

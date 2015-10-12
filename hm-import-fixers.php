@@ -210,7 +210,7 @@ class Fixers extends \WP_CLI_Command {
 		 * Keep calling get_posts() until we run out of posts to check.
 		 */
 		while ( ( $posts = get_posts( $post_args ) ) !== array() ) {
-			\WP_CLI::log( sprintf( "\nSearching %d posts...", $posts ) );
+			\WP_CLI::log( "\nSearching posts..." );
 
 			foreach ( $posts as $post ) {
 				$text = $post->post_content;

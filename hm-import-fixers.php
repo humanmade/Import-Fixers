@@ -247,9 +247,9 @@ class Fixers extends \WP_CLI_Command {
 				} else {
 					\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
 				}
-
-				$post_args['offset'] += $limit;  // Keep the loop loopin'.
 			}
+
+			$post_args['offset'] += $limit;  // Keep the loop loopin'.
 		}
 
 		libxml_clear_errors();

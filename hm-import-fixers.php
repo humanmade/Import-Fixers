@@ -220,7 +220,7 @@ class Fixers extends \WP_CLI_Command {
 					continue;
 				}
 
-				$new_text = self::replace_img_src_links_in_text( $text );
+				$new_text = self::replace_img_src_a_href( $text );
 				if ( $new_text === $text ) {
 					continue;
 				}
@@ -301,7 +301,7 @@ class Fixers extends \WP_CLI_Command {
 	 * @param string $text
 	 * @return string
 	 */
-	static public function replace_img_src_links_in_text( $text ) {
+	static public function replace_img_src_a_href( $text ) {
 		$dom   = new \DOMDocument();
 		$dom->loadHTML( '<div>' . $text . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
 		$xpath = new \DOMXPath( $dom );

@@ -312,7 +312,7 @@ class Fixers extends \WP_CLI_Command {
 			$image_url = $anchor_element->getAttribute( 'href' );
 			$mime_type = wp_check_filetype( $image_url )['type'];
 
-			if ( $mime_type && strpos( $mime_type, 'image/' ) === false ) {
+			if ( ! $mime_type || strpos( $mime_type, 'image/' ) === false ) {
 				continue;
 			}
 

@@ -39,11 +39,8 @@ class Fixers extends \WP_CLI_Command {
 	 * [--meta_key]
 	 * : Post meta key name to check URLs against. Defaults to "_original_url".
 	 *
-	 * [--enact]
-	 * : Set this flag to actually make the replacements.
-	 *
 	 * @alias internal-links
-	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>] [--enact]
+	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>]
 	 *
 	 * @param array $args Positional args.
 	 * @param array $args Assocative args.
@@ -51,16 +48,14 @@ class Fixers extends \WP_CLI_Command {
 	public function internal_links( $args, $assoc_args ) {
 		// Default args.
 		$assoc_args = array_merge( array(
-			'enact'      => false,
 			'meta_key'   => '_original_url',
 			'old_domain' => '',
 		), $assoc_args );
 
 		// Prepare args.
-		$make_changes = (bool) $assoc_args['enact'];
-		$old_domain   = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
-		$limit        = 50;
-		$post_args    = array(
+		$old_domain = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
+		$limit      = 50;
+		$post_args  = array(
 			'offset'           => 0,
 			'posts_per_page'   => $limit,
 			's'                => $old_domain,  // Try to limit the search range.
@@ -73,10 +68,7 @@ class Fixers extends \WP_CLI_Command {
 			exit;
 		}
 
-		if ( ! $make_changes ) {
-			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
-		}
-
+		\WP_CLI::confirm( 'Are you sure you want to run this command? There may be unexpected sharks!' );
 		\WP_CLI::log( "Finding URLs with the follow domain: {$old_domain}" );
 
 
@@ -128,26 +120,21 @@ class Fixers extends \WP_CLI_Command {
 
 
 					// Replace the URL and update post.
-					if ( $make_changes ) {
-						$result = wp_update_post( array(
-							'ID'           => $post->ID,
-							'post_content' => $text,
-						), true );
+					$result = wp_update_post( array(
+						'ID'           => $post->ID,
+						'post_content' => $text,
+					), true );
 
-						if ( is_wp_error( $result ) ) {
-							\WP_CLI::log( sprintf(
-								"\t[#%d] Failed replacing [%s] replacing with [%s]: %s",
-								$post->ID,
-								$link['href'],
-								$new_link,
-								$result->get_error_message()
-							) );
-						} else {
-							\WP_CLI::log( "\tPost updated." );
-						}
-
+					if ( is_wp_error( $result ) ) {
+						\WP_CLI::log( sprintf(
+							"\t[#%d] Failed replacing [%s] replacing with [%s]: %s",
+							$post->ID,
+							$link['href'],
+							$new_link,
+							$result->get_error_message()
+						) );
 					} else {
-						\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
+						\WP_CLI::log( "\tPost updated." );
 					}
 				}
 			}
@@ -165,25 +152,14 @@ class Fixers extends \WP_CLI_Command {
 	 *
 	 * ## OPTIONS
 	 *
-	 * [--enact]
-	 * : Set this flag to actually make the replacements.
-	 *
 	 * @alias img-src-from-links
-	 * @synopsis [--enact]
 	 *
 	 * @param array $args Positional args.
 	 * @param array $args Assocative args.
 	 */
 	public function img_src_from_links( $args, $assoc_args ) {
-		// Default args.
-		$assoc_args = array_merge( array(
-			'enact' => false,
-		), $assoc_args );
-
-		// Prepare args.
-		$make_changes = (bool) $assoc_args['enact'];
-		$limit        = 50;
-		$post_args    = array(
+		$limit     = 50;
+		$post_args = array(
 			'offset'           => 0,
 			'posts_per_page'   => $limit,
 			's'                => 'src=""',  // Try to limit the search range.
@@ -196,10 +172,7 @@ class Fixers extends \WP_CLI_Command {
 			exit;
 		}
 
-		if ( ! $make_changes ) {
-			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
-		}
-
+		\WP_CLI::confirm( 'Are you sure you want to run this command? There may be unexpected dragons!' );
 		\WP_CLI::log( 'Finding posts with empty <img src=""> attributes.' );
 		libxml_use_internal_errors( true );
 
@@ -228,24 +201,19 @@ class Fixers extends \WP_CLI_Command {
 				\WP_CLI::log( sprintf( '[#%d] Found empty <img src>, fixing it.', $post->ID ) );
 
 				// Update post.
-				if ( $make_changes ) {
-					$result = wp_update_post( array(
-						'ID'           => $post->ID,
-						'post_content' => $new_text,
-					), true );
+				$result = wp_update_post( array(
+					'ID'           => $post->ID,
+					'post_content' => $new_text,
+				), true );
 
-					if ( is_wp_error( $result ) ) {
-						\WP_CLI::log( sprintf(
-							"\t[#%d] Failed replacing empty links: %s",
-							$post->ID,
-							$result->get_error_message()
-						) );
-					} else {
-						\WP_CLI::log( "\tPost updated." );
-					}
-
+				if ( is_wp_error( $result ) ) {
+					\WP_CLI::log( sprintf(
+						"\t[#%d] Failed replacing empty links: %s",
+						$post->ID,
+						$result->get_error_message()
+					) );
 				} else {
-					\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
+					\WP_CLI::log( "\tPost updated." );
 				}
 			}
 

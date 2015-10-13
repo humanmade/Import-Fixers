@@ -34,8 +34,8 @@ class Test_Fix_Img_Src_From_Lunks extends \WP_UnitTestCase {
 		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
 
 		$this->assertSame(
-			$output,
-			'Hello <a href="http://example.com/image.jpg"><img src="' . $url . '" alt="paul"></a> world'
+			'Hello <a href="http://example.com/image.jpg"><img src="' . $url . '" alt="paul"></a> world',
+			$output
 		);
 	}
 
@@ -46,8 +46,8 @@ class Test_Fix_Img_Src_From_Lunks extends \WP_UnitTestCase {
 		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
 
 		$this->assertSame(
-			$output,
-			'Hello <a href="http://example.com/image.jpg"><img src="' . $url2 . '" alt="paul"></a> world <a href="http://example.com/image.png"><img src="' . $url1 . '" alt="paul"></a>'
+			'Hello <a href="http://example.com/image.jpg"><img src="' . $url2 . '" alt="paul"></a> world <a href="http://example.com/image.png"><img src="' . $url1 . '" alt="paul"></a>',
+			$output
 		);
 	}
 
@@ -57,8 +57,8 @@ class Test_Fix_Img_Src_From_Lunks extends \WP_UnitTestCase {
 		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
 
 		$this->assertSame(
-			$output,
-			'Hello <a href="http://example.com/image.jpg"><img src="' . $url . '" alt="paul"><img src="' . $url . '" alt="bob"></a> world'
+			'Hello <a href="http://example.com/image.jpg"><img src="' . $url . '" alt="paul"><img src="' . $url . '" alt="bob"></a> world',
+			$output
 		);
 	}
 
@@ -66,15 +66,13 @@ class Test_Fix_Img_Src_From_Lunks extends \WP_UnitTestCase {
 		$text   = 'Hello <a href="http://example.com/image.jpg"><img src="http://example.com/image.gif" alt="paul"></a> world';
 		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
 
-		$this->assertSame( $text, $output );
+		$this->assertSame( $output, $text );
 	}
 
 	public function test_only_replace_image_links() {
 		$text   = 'Hello <a href="http://example.com/some/thing"><img src="" alt="paul"></a> world';
 		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
 
-		$this->assertSame( $text, $output );
+		$this->assertSame( $output, $text );
 	}
-/*
-	*/
 }

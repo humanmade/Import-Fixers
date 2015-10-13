@@ -162,7 +162,6 @@ class Fixers extends \WP_CLI_Command {
 		$post_args = array(
 			'offset'           => 0,
 			'posts_per_page'   => $limit,
-			's'                => 'src=""',  // Try to limit the search range.
 			'suppress_filters' => false,
 		);
 

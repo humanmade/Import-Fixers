@@ -271,7 +271,10 @@ class Fixers extends \WP_CLI_Command {
 	 */
 	static public function replace_img_src_a_href( $text ) {
 		$dom   = new \DOMDocument();
-		$dom->loadHTML( '<div>' . $text . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD );
+		$dom->loadHTML(
+			mb_convert_encoding( '<div>' . $text . '</div>', 'HTML-ENTITIES', 'UTF-8' ),
+			LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+		);
 		$xpath = new \DOMXPath( $dom );
 
 
@@ -292,19 +295,11 @@ class Fixers extends \WP_CLI_Command {
 
 
 		// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
-		$container = $dom->getElementsByTagName( 'div' )->item( 0 );
-		$container = $container->parentNode->removeChild( $container );
+		$text = trim( $dom->saveHTML( $dom->getElementsByTagName('div')->item( 0 ) ) );
+		$text = substr( $text, strlen( '<div>' ) );
+		$text = substr( $text, 0, -strlen( '</div>' ) );
 
-		while ( $dom->firstChild ) {
-			$dom->removeChild( $dom->firstChild );
-		}
-
-		while ( $container->firstChild ) {
-			$dom->appendChild( $container->firstChild );
-		}
-
-
-		return trim( $dom->saveHTML() );
+		return trim( $text );
 	}
 }
 

@@ -75,4 +75,15 @@ class Test_Fix_Img_Src_From_Lunks extends \WP_UnitTestCase {
 
 		$this->assertSame( $output, $text );
 	}
+
+	public function test_img_src_replacement_with_non_utf8() {
+		$url    = 'http://example.com/image.jpg';
+		$text   = 'На берегу пустынных волн <a href="http://example.com/image.jpg"><img src=""></a>';
+		$output = \HM\Import\Fixers::replace_img_src_a_href( $text );
+
+		$this->assertSame(
+			'На берегу пустынных волн <a href="http://example.com/image.jpg"><img src="' . $url . '"></a>',
+			$output
+		);
+	}
 }

@@ -277,6 +277,7 @@ class Fixers extends \WP_CLI_Command {
 		);
 		$xpath = new \DOMXPath( $dom );
 
+		$replaced_image = false;
 
 		// Find links with any href value (that wrap images with a blank src).
 		foreach ( $xpath->query( '//a[@href]/img[@src=""]/..' ) as $anchor_element ) {
@@ -289,10 +290,14 @@ class Fixers extends \WP_CLI_Command {
 
 			// Find images wrapped by that anchor, and set the src.
 			foreach ( $xpath->query( './img[@src=""]', $anchor_element ) as $img_element ) {
+				$replaced_image = true;
 				$img_element->setAttribute( 'src', $image_url );
 			}
 		}
 
+		if ( ! $replaced_image ) {
+			return $text;
+		}
 
 		// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
 		$text = trim( $dom->saveHTML( $dom->getElementsByTagName('div')->item( 0 ) ) );

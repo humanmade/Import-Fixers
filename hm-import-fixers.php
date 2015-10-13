@@ -14,7 +14,7 @@ namespace HM\Import {
  * Author URI: http://hmn.md
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Version: 1
+ * Version: 2
  */
 
 // Exit if accessed directly
@@ -39,11 +39,8 @@ class Fixers extends \WP_CLI_Command {
 	 * [--meta_key]
 	 * : Post meta key name to check URLs against. Defaults to "_original_url".
 	 *
-	 * [--enact]
-	 * : Set this flag to actually make the replacements.
-	 *
 	 * @alias internal-links
-	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>] [--enact]
+	 * @synopsis --old_domain=<domain> [--meta_key=<_original_url>]
 	 *
 	 * @param array $args Positional args.
 	 * @param array $args Assocative args.
@@ -51,16 +48,14 @@ class Fixers extends \WP_CLI_Command {
 	public function internal_links( $args, $assoc_args ) {
 		// Default args.
 		$assoc_args = array_merge( array(
-			'enact'      => false,
 			'meta_key'   => '_original_url',
 			'old_domain' => '',
 		), $assoc_args );
 
 		// Prepare args.
-		$make_changes = (bool) $assoc_args['enact'];
-		$old_domain   = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
-		$limit        = 50;
-		$post_args    = array(
+		$old_domain = parse_url( esc_url_raw( $assoc_args['old_domain'] ), PHP_URL_HOST );
+		$limit      = 50;
+		$post_args  = array(
 			'offset'           => 0,
 			'posts_per_page'   => $limit,
 			's'                => $old_domain,  // Try to limit the search range.
@@ -73,10 +68,7 @@ class Fixers extends \WP_CLI_Command {
 			exit;
 		}
 
-		if ( ! $make_changes ) {
-			\WP_CLI::log( '*** Running in dry-run mode *** (add --enact to do this for real).' );
-		}
-
+		\WP_CLI::confirm( 'Are you sure you want to run this command? There may be unexpected sharks!' );
 		\WP_CLI::log( "Finding URLs with the follow domain: {$old_domain}" );
 
 
@@ -128,26 +120,21 @@ class Fixers extends \WP_CLI_Command {
 
 
 					// Replace the URL and update post.
-					if ( $make_changes ) {
-						$result = wp_update_post( array(
-							'ID'           => $post->ID,
-							'post_content' => $text,
-						), true );
+					$result = wp_update_post( array(
+						'ID'           => $post->ID,
+						'post_content' => $text,
+					), true );
 
-						if ( is_wp_error( $result ) ) {
-							\WP_CLI::log( sprintf(
-								"\t[#%d] Failed replacing [%s] replacing with [%s]: %s",
-								$post->ID,
-								$link['href'],
-								$new_link,
-								$result->get_error_message()
-							) );
-						} else {
-							\WP_CLI::log( "\tPost updated." );
-						}
-
+					if ( is_wp_error( $result ) ) {
+						\WP_CLI::log( sprintf(
+							"\t[#%d] Failed replacing [%s] replacing with [%s]: %s",
+							$post->ID,
+							$link['href'],
+							$new_link,
+							$result->get_error_message()
+						) );
 					} else {
-						\WP_CLI::log( "\tDry-run mode enabled; post not updated." );
+						\WP_CLI::log( "\tPost updated." );
 					}
 				}
 			}
@@ -156,6 +143,87 @@ class Fixers extends \WP_CLI_Command {
 		}
 
 		\WP_CLI::log( "\nComplete." );
+	}
+
+	/**
+	 * Repairs empty `<img src="">` attributes which are wrapped in a link to an image.
+	 *
+	 * Defaults to a dry-run mode.
+	 *
+	 * ## OPTIONS
+	 *
+	 * @alias img-src-from-links
+	 *
+	 * @param array $args Positional args.
+	 * @param array $args Assocative args.
+	 */
+	public function img_src_from_links( $args, $assoc_args ) {
+		$limit     = 50;
+		$post_args = array(
+			'offset'           => 0,
+			'posts_per_page'   => $limit,
+			's'                => 'src=""',  // Try to limit the search range.
+			'suppress_filters' => false,
+		);
+
+
+		if ( ! current_user_can( 'import' ) ) {
+			\WP_CLI::error( "You must run this command with a --user specified (site admin or network admin)." );
+			exit;
+		}
+
+		\WP_CLI::log( PHP_EOL . 'WARNING: Not extensively tested with non-UTF8.' );
+		\WP_CLI::log( 'WARNING: DOMDocument is likely to make small changes to any HTML as part of its processing.' . PHP_EOL );
+		\WP_CLI::confirm( 'Are you sure you want to run this command? There may be unexpected dragons!' );
+		\WP_CLI::log( 'Finding posts with empty <img src=""> attributes.' );
+		libxml_use_internal_errors( true );
+
+
+		/**
+		 * Fetch batches of posts.
+		 *
+		 * Keep calling get_posts() until we run out of posts to check.
+		 */
+		while ( ( $posts = get_posts( $post_args ) ) !== array() ) {
+			\WP_CLI::log( "\nSearching posts..." );
+
+			foreach ( $posts as $post ) {
+				$text = $post->post_content;
+
+				// Sanity check: if the content doesn't contain `src=""`, don't bother doing anything else.
+				if ( strpos( $text, 'src=""' ) === false && strpos( $text, "src=''" ) === false ) {
+					continue;
+				}
+
+				$new_text = self::replace_img_src_a_href( $text );
+				if ( $new_text === $text ) {
+					continue;
+				}
+
+				\WP_CLI::log( sprintf( '[#%d] Found empty <img src>, fixing it.', $post->ID ) );
+
+				// Update post.
+				$result = wp_update_post( array(
+					'ID'           => $post->ID,
+					'post_content' => $new_text,
+				), true );
+
+				if ( is_wp_error( $result ) ) {
+					\WP_CLI::log( sprintf(
+						"\t[#%d] Failed replacing empty links: %s",
+						$post->ID,
+						$result->get_error_message()
+					) );
+				} else {
+					\WP_CLI::log( "\tPost updated." );
+				}
+			}
+
+			$post_args['offset'] += $limit;  // Keep the loop loopin'.
+		}
+
+		libxml_clear_errors();
+		libxml_use_internal_errors( false );
 	}
 
 
@@ -168,7 +236,7 @@ class Fixers extends \WP_CLI_Command {
 	 *
 	 * @return string
 	 */
-	static function get_link_detection_regex() {
+	static public function get_link_detection_regex() {
 		return '/href=([\'"])(?P<href>(?!\1).+?)\1/i';
 	}
 
@@ -179,7 +247,7 @@ class Fixers extends \WP_CLI_Command {
 	 * @param string $meta_key Post meta key name to check URLs against.
 	 * @return string If no post found, returns an empty string, otherwise returns an absolute URL.
 	 */
-	static function find_current_post_url( $old_url, $meta_key ) {
+	static public function find_current_post_url( $old_url, $meta_key ) {
 		$post_id = get_posts( array(
 			'fields'           => 'ids',
 			'meta_key'         => sanitize_key( $meta_key ),
@@ -195,6 +263,50 @@ class Fixers extends \WP_CLI_Command {
 		}
 
 		return get_permalink( $post_id );
+	}
+
+	/**
+	 * Given a block of text, look for img tags nested in anchors that have no src attribute set.
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	static public function replace_img_src_a_href( $text ) {
+		$dom   = new \DOMDocument();
+		$dom->loadHTML(
+			mb_convert_encoding( '<div>' . $text . '</div>', 'HTML-ENTITIES', 'UTF-8' ),
+			LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+		);
+		$xpath = new \DOMXPath( $dom );
+
+		$replaced_image = false;
+
+		// Find links with any href value (that wrap images with a blank src).
+		foreach ( $xpath->query( '//a[@href]/img[@src=""]/..' ) as $anchor_element ) {
+			$image_url = $anchor_element->getAttribute( 'href' );
+			$mime_type = wp_check_filetype( $image_url )['type'];
+
+			if ( ! $mime_type || strpos( $mime_type, 'image/' ) === false ) {
+				continue;
+			}
+
+			// Find images wrapped by that anchor, and set the src.
+			foreach ( $xpath->query( './img[@src=""]', $anchor_element ) as $img_element ) {
+				$replaced_image = true;
+				$img_element->setAttribute( 'src', $image_url );
+			}
+		}
+
+		if ( ! $replaced_image ) {
+			return $text;
+		}
+
+		// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
+		$text = trim( $dom->saveHTML( $dom->getElementsByTagName('div')->item( 0 ) ) );
+		$text = substr( $text, strlen( '<div>' ) );
+		$text = substr( $text, 0, -strlen( '</div>' ) );
+
+		return trim( $text );
 	}
 }
 

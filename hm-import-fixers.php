@@ -172,6 +172,8 @@ class Fixers extends \WP_CLI_Command {
 			exit;
 		}
 
+		\WP_CLI::log( PHP_EOL . 'WARNING: Not extensively tested with non-UTF8.' );
+		\WP_CLI::log( 'WARNING: DOMDocument is likely to make small changes to any HTML as part of its processing.' . PHP_EOL );
 		\WP_CLI::confirm( 'Are you sure you want to run this command? There may be unexpected dragons!' );
 		\WP_CLI::log( 'Finding posts with empty <img src=""> attributes.' );
 		libxml_use_internal_errors( true );

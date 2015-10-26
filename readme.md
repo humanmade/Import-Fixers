@@ -13,8 +13,8 @@ SYNOPSIS
 
 SUBCOMMANDS
   internal-links      Tries to fix internal links.
+  img-src-from-links  ?
 ```
-
 
 ## internal-links
 ````
@@ -38,4 +38,18 @@ OPTIONS
 
   [--enact]
     Set this flag to actually make the replacements.
+```
+
+## img-src-from-links
+````
+NAME
+  wp fix img-src-from-links
+
+DESCRIPTION
+  Repairs empty `<img src="">` attributes which are wrapped in a link to an image.
+
+SYNOPSIS
+  wp fix img_src_from_links
+
+Defaults to a dry-run mode.
 ```

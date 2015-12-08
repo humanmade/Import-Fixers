@@ -146,6 +146,124 @@ class Fixers extends \WP_CLI_Command {
 	}
 
 	/**
+	 * Repairs a 'href' attributes wrapping images where those hrefs are no longer valid
+	 *
+	 * Args:
+	 *
+	 *   --dry-run      run the script without making updates - default: false
+	 *   --replace-with what to replace the old href attribute with (permalink|src) - default: permalink
+	 *   --before       only perform updates on posts before the given date - default: null
+	 *   --after        only perform updates on posts after the given date - default: null
+	 *   --post_type    the post type to perform the updates on - default: post
+	 *
+	 * @alias img-href-from-src
+	 *
+	 * @synopsis [--dry-run] [--replace-with] [--before] [--after]
+	 *
+	 */
+	public function img_href_from_src( $args, $args_assoc ) {
+
+		$args_assoc = wp_parse_args( $args_assoc, array(
+			'dry-run'             => false,
+			'before'              => null,
+			'after'               => null,
+			'post_type'           => 'post',
+			'replace_with'        => 'permalink',
+		) );
+
+		$updates_made = 0;
+
+		\WP_CLI::Line( sprintf( 'Beginning post image update %s', $args_assoc['dry-run'] ? ' (dry run)' : '' ) );
+
+		\WP_CLI::Line( sprintf( 'Updating image hrefs for post type: {%s}', $args_assoc['post_type'] ) );
+
+		$query_args = array(
+			'post_type'      => $args_assoc['post_type'],
+			'post_status'    => 'publish',
+			'posts_per_page' => 100,
+			'paged'          => 1
+		);
+
+		if ( $args_assoc['before'] !== null ) {
+			$before = strtotime( $args_assoc['before'] );
+
+			if ( $args_assoc['before'] === false ) {
+				WP_CLI::Error( 'Invalid date value for param %s: %s', 'before', $before );
+			}
+		}
+
+		if ( $args_assoc['after'] !== null ) {
+			$after = strtotime( $args_assoc['after'] );
+
+			if ( $args_assoc['before'] === false ) {
+				WP_CLI::Error( 'Invalid date value for param %s: %s', 'after', $after );
+			}
+		}
+
+		if ( isset( $before ) && isset( $after ) ) {
+
+			$query_args['date_query'] = array(
+				array(
+					'before' => date( 'Y-m-d H:i:s', $before ),
+					'after'  => date( 'Y-m-d H:i:s', $after )
+				)
+			);
+		}
+
+		$has_posts = true;
+
+		while ( $has_posts ) {
+
+			// Clear local cache to combat memory leaks
+			$this->stop_the_insanity();
+
+			$query = new \WP_Query( $query_args );
+
+			if ( ! $query->have_posts() ) {
+				$has_posts = false;
+				break;
+			}
+
+			\WP_CLI::Line( sprintf( '---- Fixing image hrefs for chunk: %d - %d ---- ', ( $query_args['posts_per_page'] * ( $query_args['paged'] -1 ) ), ( $query_args['posts_per_page'] * $query_args['paged'] ) ) );
+
+			$query_args['paged']++;
+
+			foreach ( $query->get_posts() as $post ) {
+
+				$text = $post->post_content;
+
+				$new_text = self::replace_img_hrefs_from_src( $text, $post, $args_assoc['replace_with'] );
+
+				if ( $new_text === $text ) {
+					continue;
+				}
+
+				\WP_CLI::log( sprintf( '[#%d] Found image <a> wrap, updating href, fixing it.', $post->ID ) );
+
+				// Update post.
+				$result = wp_update_post( array(
+					'ID'           => $post->ID,
+					'post_content' => $new_text,
+				), true );
+
+				if ( is_wp_error( $result ) ) {
+					\WP_CLI::log( sprintf(
+						"\t[#%d] Failed replacing hrefs: %s",
+						$post->ID,
+						$result->get_error_message()
+					) );
+				} else {
+					\WP_CLI::log( "\tPost updated." );
+				}
+
+			}
+		}
+
+		\WP_CLI::Success( sprintf( 'All done, updated image hrefs in %s posts', $updates_made ) );
+
+	}
+
+	/**
 	 * Repairs empty `<img src="">` attributes which are wrapped in a link to an image.
 	 *
 	 * Defaults to a dry-run mode.
@@ -306,6 +424,124 @@ class Fixers extends \WP_CLI_Command {
 		$text = substr( $text, 0, -strlen( '</div>' ) );
 
 		return trim( $text );
+	}
+
+	/**
+	 * Given a block of text, look for images nested in hrefs and update those hrefs to the current attachment url
+	 *
+	 * @param string $text
+	 * @return string
+	 */
+	protected static function replace_img_hrefs_from_src( $text, $post, $replace_with = 'permalink' ) {
+		$dom = new \DOMDocument();
+
+		$dom->loadHTML(
+			mb_convert_encoding( '<div>' . $text . '</div>', 'HTML-ENTITIES', 'UTF-8' ),
+			LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD
+		);
+
+		$xpath          = new \DOMXPath( $dom );
+		$replaced_href  = false;
+
+		// Find links with any href value (that wrap images with a blank src).
+		foreach ( $xpath->query( '//a[@href]/img/..' ) as $anchor_element ) {
+
+			// Find images wrapped by that anchor, and set the src.
+			foreach ( $xpath->query( './img', $anchor_element ) as $img_element ) {
+
+				$src = $img_element->getAttribute( 'src' );
+
+				// No image src, quit early
+				if ( ! $src ) {
+					continue;
+				}
+
+				// Get attachment post object from src url
+				$attachment = static::get_attachment_from_src( $src );
+
+				// No attachment found for image, quit early
+				if ( ! $attachment ) {
+					continue;
+				}
+
+				switch( $replace_with ) {
+
+					case 'src':
+
+						$anchor_element->setAttribute( 'href', $src );
+						break;
+
+					default:
+						$anchor_element->setAttribute( 'href', get_the_permalink( $attachment->ID ) );
+				}
+
+				$class = $img_element->getAttribute( 'class' );
+				$class = preg_replace( '/wp-image-(\d+)/', '', $class );
+				$class .= ' wp-image-' . $attachment->ID;
+
+				$img_element->setAttribute( 'class', $class );
+
+				$replaced_href = true;
+
+				$text = trim( $dom->saveHTML( $dom->getElementsByTagName('div')->item( 0 ) ) );
+				$text = substr( $text, strlen( '<div>' ) );
+				$text = substr( $text, 0, -strlen( '</div>' ) );
+			}
+		}
+
+		if ( ! $replaced_href ) {
+			return $text;
+		}
+
+		// $text was wrapped in a <div> tag to avoid DOMDocument changing things, so remove it.
+		$text = trim( $dom->saveHTML( $dom->getElementsByTagName('div')->item( 0 ) ) );
+		$text = substr( $text, strlen( '<div>' ) );
+		$text = substr( $text, 0, -strlen( '</div>' ) );
+
+		return trim( $text );
+	}
+
+	/**
+	 * Attempts to get an attachment from it's source url
+	 *
+	 * @param $src
+	 * @return array|bool|null|\WP_Post
+	 */
+	protected static function get_attachment_from_src( $src ) {
+
+		global $wpdb;
+
+		$split = explode( '/', $src );
+		$path  = implode( '/', array_slice( $split, -3 ) );
+
+		$post_id = $wpdb->get_var( $wpdb->prepare( "SELECT post_id from $wpdb->postmeta WHERE meta_key = '_wp_attached_file' AND meta_value = %s", $path ) );
+
+		if ( $post_id ) {
+			return get_post( $post_id );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Clear local cache to free up memory
+	 */
+	protected function stop_the_insanity() {
+
+		global $wpdb, $wp_object_cache;
+
+		$wpdb->queries = array(); // or define( 'WP_IMPORTING', true );
+
+		if ( !is_object( $wp_object_cache ) )
+			return;
+
+		$wp_object_cache->group_ops = array();
+		//$wp_object_cache->stats = array();
+		$wp_object_cache->memcache_debug = array();
+		$wp_object_cache->cache = array();
+
+		if ( is_callable( $wp_object_cache, '__remoteset' ) )
+			$wp_object_cache->__remoteset(); // important
 	}
 }
 

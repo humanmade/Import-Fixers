@@ -17,6 +17,8 @@ namespace HM\Import {
  * Version: 2
  */
 
+use \WP_CLI;
+
 // Exit if accessed directly
 defined( 'ABSPATH' ) || exit;
 
@@ -343,6 +345,228 @@ class Fixers extends \WP_CLI_Command {
 		libxml_use_internal_errors( false );
 	}
 
+	/**
+	 * Repairs image URLs containing unicode characters that are 404'ing if the file exists without
+	 *
+	 * Args:
+	 *
+	 *   --dry-run      run the script without making updates - default: false
+	 *   --before       only perform updates on posts before the given date - default: null
+	 *   --after        only perform updates on posts after the given date - default: null
+	 *
+	 * @alias img-url-file-mismatch
+	 *
+	 * @synopsis [--dry-run] [--before] [--after]
+	 *
+	 * @param array $args Positional args.
+	 * @param array $args Assocative args.
+	 */
+	public function img_url_file_mismatch( array $args, array $args_assoc ) {
+		global $wpdb;
+
+		$args_assoc = wp_parse_args( $args_assoc, array(
+			'dry-run'             => false,
+			'before'              => null,
+			'after'               => null,
+		) );
+
+		$updates_made = 0;
+		$missing_images = array();
+
+		\WP_CLI::Line( sprintf( 'Beginning post image update %s', $args_assoc['dry-run'] ? ' (dry run)' : '' ) );
+
+		$query_args = array(
+			'post_type'      => 'post',
+			'post_status'    => 'publish',
+			'posts_per_page' => 100,
+			'paged'          => 1
+		);
+
+		if ( $args_assoc['before'] !== null ) {
+			$before = strtotime( $args_assoc['before'] );
+
+			if ( $args_assoc['before'] === false ) {
+				WP_CLI::Error( 'Invalid date value for param %s: %s', 'before', $before );
+			}
+		}
+
+		if ( $args_assoc['after'] !== null ) {
+			$after = strtotime( $args_assoc['after'] );
+
+			if ( $args_assoc['before'] === false ) {
+				WP_CLI::Error( 'Invalid date value for param %s: %s', 'after', $after );
+			}
+		}
+
+		if ( isset( $before ) && isset( $after ) ) {
+
+			$query_args['date_query'] = array(
+				array(
+					'before' => date( 'Y-m-d H:i:s', $before ),
+					'after'  => date( 'Y-m-d H:i:s', $after )
+				)
+			);
+		}
+
+		$has_posts = true;
+
+		while ( $has_posts ) {
+
+			// Clear local cache to combat memory leaks
+			$this->stop_the_insanity();
+
+			$query = new \WP_Query( $query_args );
+
+			if ( ! $query->have_posts() ) {
+				$has_posts = false;
+				break;
+			}
+
+			\WP_CLI::Line( sprintf( '---- Fixing images for chunk: %d - %d ---- ', ( $query_args['posts_per_page'] * ( $query_args['paged'] -1 ) ), ( $query_args['posts_per_page'] * $query_args['paged'] ) ) );
+
+			$query_args['paged']++;
+
+			foreach ( $query->get_posts() as $post ) {
+
+				$images = self::get_images_from_string( $post->post_content );
+
+				if ( empty( $images ) ) {
+					continue;
+				}
+
+				// Need this to check if we should update the post content later.
+				$text     = $post->post_content;
+				$new_text = $text;
+
+				foreach( $images as $image ) {
+
+					// Check if the file exists or not after encoding.
+					$file_name = basename( $image['url'] );
+					$enc_file_name = rawurlencode( $file_name );
+
+					$exists = wp_remote_head( str_replace(
+						$file_name,
+						$enc_file_name,
+						$image['url']
+					) );
+
+					if ( is_wp_error( $exists ) || 404 !== $exists['response']['code'] ) {
+						continue;
+					}
+
+					\WP_CLI::log( sprintf( '[#%d] Found missing image, attempting to fix it. %s', $post->ID, $image['url'] ) );
+
+					// If it doesn't try transliterating.
+					$no_accents_url = str_replace(
+						$file_name,
+						remove_accents( $file_name ),
+						$image['url']
+					);
+
+					$exists = wp_remote_head( $no_accents_url );
+
+					if ( ! is_wp_error( $exists ) && 404 !== $exists['response']['code'] ) {
+
+						\WP_CLI::log( sprintf( "\t[#%d] Non accented image found. %s", $post->ID, $no_accents_url ) );
+
+						$new_text = str_replace( $image['url'], $no_accents_url, $new_text );
+
+						// Check for bad guids
+						$attachments = (array) $wpdb->get_results( $wpdb->prepare( "select ID, guid from $wpdb->posts where guid like %s;", '%' . $wpdb->esc_like( $file_name ) ) );
+
+						if ( $attachments ) {
+
+							\WP_CLI::log( sprintf( "\t[#%d] Updating bad attachment guids. %s", $post->ID ) );
+
+							foreach( $attachments as $attachment ) {
+								wp_update_post( array(
+									'ID' => $attachment->ID,
+									'guid' => str_replace(
+										$file_name,
+										remove_accents( $file_name ),
+										$attachment->guid
+									),
+								) );
+							}
+
+						} else {
+
+							$file = str_replace(
+								$file_name,
+								remove_accents( $file_name ),
+								$image['original_path']
+							);
+
+							$result = wp_insert_attachment( array(
+								'post_title'    => $image['alt'] ?
+									sanitize_text_field( $image['alt'] ) :
+									sanitize_title( $file_name ),
+								'post_date'     => $post->post_date,
+								'post_date_gmt' => $post->post_date_gmt,
+							), $file, $post->ID );
+
+							if ( $result && ! is_wp_error( $result ) ) {
+								\WP_CLI::log( sprintf(
+									"\t[#%d] Created attachment %d for: %s",
+									$post->ID,
+									$result,
+									$file
+								) );
+
+								wp_update_attachment_metadata( $result, wp_generate_attachment_metadata( $result, $file ) );
+							} else {
+								\WP_CLI::log( sprintf(
+									"\t[#%d] Failed creating attachment on: %s",
+									$post->ID,
+									$result->get_error_message()
+								) );
+							}
+
+						}
+
+						continue;
+					}
+
+					// Collect completely missed images
+					$missing_images[] = $image;
+
+				}
+
+				if ( $text !== $new_text ) {
+
+					// Update post.
+					$result = wp_update_post( array(
+						'ID'           => $post->ID,
+						'post_content' => $new_text,
+					), true );
+
+					if ( is_wp_error( $result ) ) {
+						\WP_CLI::log( sprintf(
+							"\t[#%d] Failed replacing srcs: %s",
+							$post->ID,
+							$result->get_error_message()
+						) );
+					} else {
+						\WP_CLI::log( "\tPost updated." );
+						$updates_made++;
+					}
+				}
+
+			}
+		}
+
+		\WP_CLI::Success( sprintf( 'All done, updated image URLs and guids in %s posts', $updates_made ) );
+
+		// Output missing image URLs so they can be fetched manually if needed.
+		if ( $missing_images ) {
+			\WP_CLI::log( 'The following images could not be located:' );
+			foreach ( $missing_images as $image ) {
+				\WP_CLI::log( $image['url'] );
+			}
+		}
+
+	}
+
 
 	/**
 	 * Helper/internal functions.
@@ -521,6 +745,59 @@ class Fixers extends \WP_CLI_Command {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Get images by src or class name from a string.
+	 *
+	 * @param $string
+	 * @return array
+	 */
+	protected static function get_images_from_string( $string ) {
+
+		$upload_dir = wp_upload_dir();
+
+		$class_regex = 'class=".*?wp-image-(?P<post_id>[\d]+).*?"';
+		$src_regex = 'src="(?P<url>' . $upload_dir['baseurl'] . '/[\d]+/[\d]+/([^"]+(?:-(?P<size>[\d]+x[\d]+))?\.(jpg|png|jpeg|bmp)))"';
+		$alt_regex = '(?:alt="(?P<alt>[^"]+)")?';
+
+		$regexes = array(
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $class_regex, $src_regex, $alt_regex ),
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $src_regex, $class_regex, $alt_regex ),
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $class_regex, $alt_regex, $src_regex ),
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $src_regex, $alt_regex, $class_regex ),
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $alt_regex, $class_regex, $src_regex ),
+			sprintf( '<img [^>]*?%s [^>]*?%s [^>]*?%s', $alt_regex, $src_regex, $class_regex ),
+		);
+
+		$todo = array();
+
+		foreach ( $regexes as $regex ) {
+			preg_match_all( '#' . $regex . '#', $string, $matches, PREG_SET_ORDER );
+
+			if ( ! $matches ) {
+				continue;
+			}
+
+			foreach ( $matches as $match ) {
+
+				if ( isset( $match['size'] ) && $match['size'] ) {
+					$original_url = str_replace( '-' . $match['size'], '', $match['url'] );
+				} else {
+					$original_url = $match['url'];
+				}
+				$original_path = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], $original_url );
+				$todo[] = array(
+					'size'          => isset( $match['size'] ) ? array_map( 'absint', explode( 'x', $match['size'] ) ) : 'full',
+					'url'           => $match['url'],
+					'original_path' => $original_path,
+					'id'            => $match['post_id'],
+					'alt'           => isset( $match['alt'] ) ? $match['alt'] : '',
+				);
+			}
+		}
+
+		return $todo;
 	}
 
 	/**

@@ -465,70 +465,69 @@ class Fixers extends \WP_CLI_Command {
 
 					$exists = wp_remote_head( $no_accents_url );
 
-					if ( ! is_wp_error( $exists ) && 404 !== $exists['response']['code'] ) {
-
-						\WP_CLI::log( sprintf( "\t[#%d] Non accented image found. %s", $post->ID, $no_accents_url ) );
-
-						$new_text = str_replace( $image['url'], $no_accents_url, $new_text );
-
-						// Check for bad guids
-						$attachments = (array) $wpdb->get_results( $wpdb->prepare( "select ID, guid from $wpdb->posts where guid like %s;", '%' . $wpdb->esc_like( $file_name ) ) );
-
-						if ( $attachments ) {
-
-							\WP_CLI::log( sprintf( "\t[#%d] Updating bad attachment guids. %s", $post->ID ) );
-
-							foreach( $attachments as $attachment ) {
-								wp_update_post( array(
-									'ID' => $attachment->ID,
-									'guid' => str_replace(
-										$file_name,
-										remove_accents( $file_name ),
-										$attachment->guid
-									),
-								) );
-							}
-
-						} else {
-
-							$file = str_replace(
-								$file_name,
-								remove_accents( $file_name ),
-								$image['original_path']
-							);
-
-							$result = wp_insert_attachment( array(
-								'post_title'    => $image['alt'] ?
-									sanitize_text_field( $image['alt'] ) :
-									sanitize_title( $file_name ),
-								'post_date'     => $post->post_date,
-								'post_date_gmt' => $post->post_date_gmt,
-							), $file, $post->ID );
-
-							if ( $result && ! is_wp_error( $result ) ) {
-								\WP_CLI::log( sprintf(
-									"\t[#%d] Created attachment %d for: %s",
-									$post->ID,
-									$result,
-									$file
-								) );
-
-								wp_update_attachment_metadata( $result, wp_generate_attachment_metadata( $result, $file ) );
-							} else {
-								\WP_CLI::log( sprintf(
-									"\t[#%d] Failed creating attachment on: %s",
-									$post->ID,
-									$result->get_error_message()
-								) );
-							}
-
-						}
-
+					if ( is_wp_error( $exists ) || 404 === $exists['response']['code'] ) {
+						// Collect completely missed images
+						$missing_images[] = $image;
 						continue;
 					}
 
-					// Collect completely missed images
-					$missing_images[] = $image;
+					\WP_CLI::log( sprintf( "\t[#%d] Non accented image found. %s", $post->ID, $no_accents_url ) );
+
+					$new_text = str_replace( $image['url'], $no_accents_url, $new_text );
+
+					// Check for bad guids
+					$attachments = (array) $wpdb->get_results( $wpdb->prepare( "select ID, guid from $wpdb->posts where guid like %s;", '%' . $wpdb->esc_like( $file_name ) ) );
+
+					if ( $attachments ) {
+
+						\WP_CLI::log( sprintf( "\t[#%d] Updating bad attachment guids. %s", $post->ID ) );
+
+						foreach( $attachments as $attachment ) {
+							wp_update_post( array(
+								'ID' => $attachment->ID,
+								'guid' => str_replace(
+									$file_name,
+									remove_accents( $file_name ),
+									$attachment->guid
+								),
+							) );
+						}
+
+					// Create a new attachment and point it to the file
+					} else {
+
+						$file = str_replace(
+							$file_name,
+							remove_accents( $file_name ),
+							$image['original_path']
+						);
+
+						$result = wp_insert_attachment( array(
+							'post_title'    => $image['alt'] ?
+								sanitize_text_field( $image['alt'] ) :
+								sanitize_title( $file_name ),
+							'post_date'     => $post->post_date,
+							'post_date_gmt' => $post->post_date_gmt,
+						), $file, $post->ID );
+
+						if ( $result && ! is_wp_error( $result ) ) {
+							\WP_CLI::log( sprintf(
+								"\t[#%d] Created attachment %d for: %s",
+								$post->ID,
+								$result,
+								$file
+							) );
+
+							wp_update_attachment_metadata( $result, wp_generate_attachment_metadata( $result, $file ) );
+						} else {
+							\WP_CLI::log( sprintf(
+								"\t[#%d] Failed creating attachment on: %s",
+								$post->ID,
+								$result->get_error_message()
+							) );
+						}
+
+					}
 
 				}
 
